@@ -147,6 +147,86 @@ body::before {
   50% { transform: translateX(-50%) translateY(4px); }
 }
 
+/* ---------- COUNTDOWN ---------- */
+.envelope.locked { cursor: not-allowed; }
+.envelope.locked:hover { transform: none; }
+
+.countdown-wrap {
+  position: absolute;
+  bottom: -10rem;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  width: 100%;
+  max-width: 420px;
+}
+
+.countdown-eyebrow {
+  font-family: 'Caveat', cursive;
+  font-size: 1.2rem;
+  color: var(--terracotta-deep);
+  opacity: 0.85;
+  margin-bottom: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
+.countdown {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.countdown-unit {
+  background: var(--cream);
+  padding: 0.7rem 0.5rem 0.5rem;
+  min-width: 68px;
+  border-radius: 4px;
+  box-shadow:
+    0 4px 12px -4px rgba(45,31,18,0.25),
+    inset 0 0 0 1px rgba(45,31,18,0.06);
+  position: relative;
+}
+
+.countdown-unit .num {
+  font-family: 'Fraunces', serif;
+  font-weight: 300;
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.countdown-unit .label {
+  font-family: 'Fraunces', serif;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--terracotta);
+  margin-top: 0.4rem;
+  font-weight: 600;
+}
+
+.unlocked-msg {
+  display: none;
+  font-family: 'Caveat', cursive;
+  font-size: 1.4rem;
+  color: var(--terracotta-deep);
+  animation: bob 2s ease-in-out infinite;
+}
+
+.envelope.unlocked .countdown { display: none; }
+.envelope.unlocked .countdown-eyebrow { display: none; }
+.envelope.unlocked .unlocked-msg { display: block; }
+.envelope.unlocked .tap-hint { display: none; }
+
+@media (max-width: 480px) {
+  .countdown-unit { min-width: 58px; padding: 0.55rem 0.4rem 0.4rem; }
+  .countdown-unit .num { font-size: 1.6rem; }
+  .countdown-unit .label { font-size: 0.55rem; }
+  .countdown-wrap { bottom: -9rem; }
+}
+
 /* ---------- LETTER ---------- */
 #letter-stage {
   display: none;
@@ -675,21 +755,30 @@ body::before {
 
 <!-- STAGE 1: ENVELOPE -->
 <section class="stage" id="envelope-stage">
-  <div class="envelope" id="envelope" role="button" tabindex="0" aria-label="Open the envelope">
+  <div class="envelope locked" id="envelope" role="button" tabindex="0" aria-label="Birthday envelope, locked until midnight">
     <div class="envelope-flap"></div>
-    <div class="wax-seal"><span class="wax-seal-inner">BW</span></div>
+    <div class="wax-seal"><span class="wax-seal-inner">M</span></div>
     <div class="envelope-label">to my favourite person ✿</div>
-    <div class="tap-hint">tap to open ↓</div>
+    <div class="tap-hint" id="tap-hint" style="display:none;">tap to open ↓</div>
+    <div class="countdown-wrap">
+      <div class="countdown-eyebrow" id="countdown-eyebrow">opens at midnight on your birthday —</div>
+      <div class="countdown" id="countdown" aria-live="polite">
+        <div class="countdown-unit"><div class="num" id="cd-days">--</div><div class="label">Days</div></div>
+        <div class="countdown-unit"><div class="num" id="cd-hours">--</div><div class="label">Hours</div></div>
+        <div class="countdown-unit"><div class="num" id="cd-mins">--</div><div class="label">Mins</div></div>
+        <div class="countdown-unit"><div class="num" id="cd-secs">--</div><div class="label">Secs</div></div>
+      </div>
+      <div class="unlocked-msg">it's time ✿ tap to open ↓</div>
+    </div>
   </div>
 </section>
 
 <!-- STAGE 2: LETTER -->
 <section class="stage" id="letter-stage">
   <div class="letter-card">
-    <div class="letter-eyebrow">happy birthday, my little sesame seed —</div>
-    <h1>Here's something <em>for you </em>.</h1>
-    <p>...soon ... </p>
-    <p> From a weaving cooperative in Ghana, now coming to carry your swimming cossie and a little pastry.</p>
+    <div class="letter-eyebrow">happy birthday, my love —</div>
+    <h1>I found something <em>so very you</em>.</h1>
+    <p>From a small weaving cooperative in Northern Ghana, now it's come to live on your handlebars.</p>
     <button class="reveal-btn" id="reveal-btn">
       Show me <span class="arrow">→</span>
     </button>
@@ -757,7 +846,8 @@ body::before {
       </div>
 
       <div class="signoff">
-        <small>— Now we find somewhere to ride to.</small>
+        Happy birthday, my love.<br>
+        <small>— Now we just need somewhere to ride to.</small>
       </div>
     </div>
   </div>
@@ -796,7 +886,84 @@ body::before {
   const revealStage = document.getElementById('reveal-stage');
   const revealBtn = document.getElementById('reveal-btn');
 
+  // ---------- COUNTDOWN ----------
+  // Unlock at 00:00 on 4 May 2026, local time.
+  const UNLOCK_AT = new Date(2026, 4, 4, 0, 0, 0, 0).getTime(); // month is 0-indexed: 4 = May
+
+  const cdDays  = document.getElementById('cd-days');
+  const cdHours = document.getElementById('cd-hours');
+  const cdMins  = document.getElementById('cd-mins');
+  const cdSecs  = document.getElementById('cd-secs');
+  const tapHint = document.getElementById('tap-hint');
+
+  const pad = (n) => String(n).padStart(2, '0');
+
+  function updateCountdown() {
+    const now = Date.now();
+    let diff = UNLOCK_AT - now;
+
+    if (diff <= 0) {
+      cdDays.textContent  = '00';
+      cdHours.textContent = '00';
+      cdMins.textContent  = '00';
+      cdSecs.textContent  = '00';
+      unlockEnvelope();
+      return true; // unlocked
+    }
+
+    const days  = Math.floor(diff / (1000 * 60 * 60 * 24));
+    diff -= days * 1000 * 60 * 60 * 24;
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    diff -= hours * 1000 * 60 * 60;
+    const mins  = Math.floor(diff / (1000 * 60));
+    diff -= mins * 1000 * 60;
+    const secs  = Math.floor(diff / 1000);
+
+    cdDays.textContent  = pad(days);
+    cdHours.textContent = pad(hours);
+    cdMins.textContent  = pad(mins);
+    cdSecs.textContent  = pad(secs);
+    return false; // still locked
+  }
+
+  function unlockEnvelope() {
+    envelope.classList.remove('locked');
+    envelope.classList.add('unlocked');
+    envelope.setAttribute('aria-label', 'Open the envelope');
+    if (tapHint) tapHint.style.display = '';
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  }
+
+  let countdownTimer = null;
+  // run once immediately so we don't show "--"
+  if (!updateCountdown()) {
+    countdownTimer = setInterval(updateCountdown, 1000);
+  }
+
+  function isUnlocked() {
+    return Date.now() >= UNLOCK_AT;
+  }
+
+  // gentle nudge if she taps too early
+  function shakeEnvelope() {
+    envelope.animate(
+      [
+        { transform: 'translateX(0)' },
+        { transform: 'translateX(-6px)' },
+        { transform: 'translateX(6px)' },
+        { transform: 'translateX(-4px)' },
+        { transform: 'translateX(4px)' },
+        { transform: 'translateX(0)' }
+      ],
+      { duration: 420, easing: 'ease-in-out' }
+    );
+  }
+
   function openEnvelope() {
+    if (!isUnlocked()) {
+      shakeEnvelope();
+      return;
+    }
     envelope.classList.add('opening');
     setTimeout(() => {
       envStage.style.display = 'none';
